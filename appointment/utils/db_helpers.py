@@ -14,7 +14,7 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.core.exceptions import FieldDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.urls import reverse
 from django.utils import timezone
 
@@ -108,6 +108,19 @@ def check_day_off_for_staff(staff_member, date) -> bool:
     return DayOff.objects.filter(staff_member=staff_member, start_date__lte=date, end_date__gte=date).exists()
 
 
+def appointment_conflict_exists(appointment_request):
+    """
+    Return True when another appointment for the same staff member
+    overlaps the requested date and time period.
+    """
+    return Appointment.objects.filter(
+        appointment_request__staff_member=appointment_request.staff_member,
+        appointment_request__date=appointment_request.date,
+        appointment_request__start_time__lt=appointment_request.end_time,
+        appointment_request__end_time__gt=appointment_request.start_time,
+    ).exists()
+
+
 def create_and_save_appointment(ar, client_data: dict, appointment_data: dict, request):
     """Create and save a new appointment based on the provided appointment request and client data.
 
@@ -117,6 +130,11 @@ def create_and_save_appointment(ar, client_data: dict, appointment_data: dict, r
     :param request: The request object.
     :return: The newly created appointment.
     """
+    if appointment_conflict_exists(ar):
+        raise ValidationError(
+            "This staff member already has an appointment during the selected time."
+        )
+
     user = get_user_by_email(client_data['email'])
     appointment = Appointment.objects.create(
             client=user, appointment_request=ar,

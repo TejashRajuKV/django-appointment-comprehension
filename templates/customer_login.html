@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 500px; margin: 4rem auto; padding: 1rem; background: #F4ECE8; }
+        h1 { color: #7A5C61; }
+        form { background: white; padding: 2rem; border-radius: 8px; }
+        input { width: 100%; padding: 0.6rem; margin: 0.5rem 0; }
+        button { background: #7A5C61; color: white; padding: 0.7rem 1.5rem; border: none; border-radius: 5px; cursor: pointer; }
+        .hint { margin-top: 1rem; font-size: 0.9rem; color: #555; }
+    </style>
+</head>
+<body>
+    <h1>Customer Login</h1>
+    {% if form.errors %}
+        <p style="color:red;">Invalid username or email or password. Try again.</p>
+    {% endif %}
+    <form method="post">
+        {% csrf_token %}
+        <p>
+            <label for="{{ form.username.id_for_label }}">Username or Email</label><br>
+            {{ form.username }}
+        </p>
+        <p>
+            <label for="{{ form.password.id_for_label }}">Password</label><br>
+            {{ form.password }}
+        </p>
+        <button type="submit">Log in</button>
+    </form>
+    <div class="hint">
+        Demo customer: xyz / xyz@gmail.com / password: <b>customer123</b><br>
+        Staff: riya / riya@example.com, arjun, maya (password set via admin)<br>
+        No password? Book once, then use verification code from console or set password via admin.
+    </div>
+    <p><a href="/">Back to home</a></p>
+</body>
+</html>

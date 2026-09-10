@@ -38,6 +38,14 @@ def handle_existing_email(request, client_data, appointment_data, appointment_re
     logger.info("Email already in database, saving info in session and redirecting to enter verification code")
     user = get_user_by_email(client_data['email'])
     send_verification_email(user=user, email=client_data['email'])
+    try:
+        from appointment.models import EmailVerificationCode
+        code_obj = EmailVerificationCode.objects.filter(user=user).order_by('-created_at').first()
+        if code_obj:
+            messages.info(request, f"Demo code (email not configured): {code_obj.code}")
+            logger.info(f"Verification code for {client_data['email']}: {code_obj.code}")
+    except Exception:
+        pass
 
     # clean the session variables
     session_keys = ['email', 'phone', 'want_reminder', 'address', 'additional_info']
@@ -83,7 +91,10 @@ def get_appointment_data_from_session(request):
     :return: The appointment data retrieved from the session.
     """
     phone = request.session.get('phone')
-    phone_obj = PhoneNumber.from_string(phone)
+    try:
+        phone_obj = PhoneNumber.from_string(phone) if phone else ""
+    except Exception:
+        phone_obj = phone if phone else ""
     want_reminder = request.session.get('want_reminder', False)
     address = request.session.get('address')
     additional_info = request.session.get('additional_info')

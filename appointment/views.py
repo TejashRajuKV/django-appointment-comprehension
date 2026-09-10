@@ -363,7 +363,41 @@ def appointment_client_information(request, appointment_request_id, id_request):
             messages.success(request, _("An account was created for you."))
 
             # Create a new appointment
-            response = create_appointment(request, ar, client_data, appointment_data)
+            try:
+                response = create_appointment(request, ar, client_data, appointment_data)
+            except ValidationError as e:
+                base_msg = e.message if hasattr(e, 'message') else str(e)
+                try:
+                    user_tmp = get_user_by_email(client_data['email'])
+                    if user_tmp:
+                        conflict = Appointment.objects.filter(
+                            client=user_tmp,
+                            appointment_request__date=ar.date,
+                            appointment_request__start_time__lt=ar.end_time,
+                            appointment_request__end_time__gt=ar.start_time,
+                        ).first()
+                        if conflict:
+                            detail = _("Conflicting appointment: %(service)s on %(date)s at %(time)s (%(duration)s)") % {
+                                'service': conflict.get_service_name(),
+                                'date': conflict.get_appointment_date(),
+                                'time': conflict.appointment_request.start_time.strftime('%I:%M %p'),
+                                'duration': conflict.get_service_duration()
+                            }
+                            base_msg = f"{base_msg} {detail}"
+                except Exception:
+                    pass
+                messages.error(request, base_msg)
+                extra_context = {
+                    'ar': ar,
+                    'APPOINTMENT_PAYMENT_URL': APPOINTMENT_PAYMENT_URL,
+                    'form': appointment_form,
+                    'client_data_form': client_data_form,
+                    'service_name': ar.service.name,
+                    'has_required_email_reminder_config': has_required_email_reminder_config,
+                }
+                context = get_generic_context_with_extra(request, extra_context, admin=False)
+                template = get_custom_template('appointment_client_information.html', 'appointment/appointment_client_information.html')
+                return render(request, template, context=context)
             request.session.setdefault(f'appointment_submitted_{id_request}', True)
             return response
     else:
@@ -417,8 +451,51 @@ def enter_verification_code(request, appointment_request_id, id_request):
         if verify_user_and_login(request, user, code):
             appointment_request_object = AppointmentRequest.objects.get(pk=appointment_request_id)
             appointment_data = get_appointment_data_from_session(request)
-            response = create_appointment(request=request, appointment_request_obj=appointment_request_object,
-                                          client_data={'email': email}, appointment_data=appointment_data)
+            try:
+                response = create_appointment(request=request, appointment_request_obj=appointment_request_object,
+                                              client_data={'email': email}, appointment_data=appointment_data)
+            except ValidationError as e:
+                base_msg = e.message if hasattr(e, 'message') else str(e)
+                try:
+                    conflict = Appointment.objects.filter(
+                        client=user,
+                        appointment_request__date=appointment_request_object.date,
+                        appointment_request__start_time__lt=appointment_request_object.end_time,
+                        appointment_request__end_time__gt=appointment_request_object.start_time,
+                    ).first()
+                    if conflict:
+                        detail = _("Conflicting appointment: %(service)s on %(date)s at %(time)s (%(duration)s)") % {
+                            'service': conflict.get_service_name(),
+                            'date': conflict.get_appointment_date(),
+                            'time': conflict.appointment_request.start_time.strftime('%I:%M %p'),
+                            'duration': conflict.get_service_duration()
+                        }
+                        base_msg = f"{base_msg} {detail}"
+                    else:
+                        staff_conflict = Appointment.objects.filter(
+                            appointment_request__staff_member=appointment_request_object.staff_member,
+                            appointment_request__date=appointment_request_object.date,
+                            appointment_request__start_time__lt=appointment_request_object.end_time,
+                            appointment_request__end_time__gt=appointment_request_object.start_time,
+                        ).first()
+                        if staff_conflict:
+                            detail = _("Staff %(staff)s already booked: %(service)s on %(date)s at %(time)s") % {
+                                'staff': staff_conflict.get_staff_member_name(),
+                                'service': staff_conflict.get_service_name(),
+                                'date': staff_conflict.get_appointment_date(),
+                                'time': staff_conflict.appointment_request.start_time.strftime('%I:%M %p')
+                            }
+                            base_msg = f"{base_msg} {detail}"
+                except Exception:
+                    pass
+                messages.error(request, base_msg)
+                extra_context = {
+                    'appointment_request_id': appointment_request_id,
+                    'id_request': id_request,
+                }
+                context = get_generic_context_with_extra(request, extra_context, admin=False)
+                template = get_custom_template('verification_code.html', 'appointment/enter_verification_code.html')
+                return render(request, template, context=context)
             return response
         else:
             messages.error(request, _("Invalid verification code."))

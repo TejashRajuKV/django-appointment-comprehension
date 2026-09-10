@@ -38,6 +38,19 @@ urlpatterns += i18n_patterns(
         ),
         name="staff_login",
     ),
+    path(
+        "login/",
+        auth_views.LoginView.as_view(
+            template_name="customer_login.html",
+            next_page="/",
+        ),
+        name="login",
+    ),
+    path(
+        "logout/",
+        auth_views.LogoutView.as_view(next_page="/"),
+        name="logout",
+    ),
     path("", include("appointment.urls")),
     prefix_default_language=False,
 )

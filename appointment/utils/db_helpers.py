@@ -121,6 +121,43 @@ def appointment_conflict_exists(appointment_request):
     ).exists()
 
 
+def customer_appointment_conflict_exists(client, appointment_request, exclude_appointment_id=None):
+    """
+    Return True when the same customer already has an overlapping appointment
+    on the same date. Staff is intentionally not part of the filter.
+    Client identified -> validation performed; client unavailable -> cannot reliably identify same customer and is skipped (limitation).
+    """
+    if client is None:
+        return False
+    qs = Appointment.objects.filter(
+        client=client,
+        appointment_request__date=appointment_request.date,
+        appointment_request__start_time__lt=appointment_request.end_time,
+        appointment_request__end_time__gt=appointment_request.start_time,
+    )
+    if exclude_appointment_id:
+        qs = qs.exclude(pk=exclude_appointment_id)
+    return qs.exists()
+
+
+def customer_appointment_conflict_exists_by_email(email, appointment_request, exclude_appointment_id=None):
+    """
+    Fallback for guest identification via email when client FK not yet resolved.
+    Uses client__email to find same identity across guest bookings that resolve to same email.
+    """
+    if not email:
+        return False
+    qs = Appointment.objects.filter(
+        client__email=email,
+        appointment_request__date=appointment_request.date,
+        appointment_request__start_time__lt=appointment_request.end_time,
+        appointment_request__end_time__gt=appointment_request.start_time,
+    )
+    if exclude_appointment_id:
+        qs = qs.exclude(pk=exclude_appointment_id)
+    return qs.exists()
+
+
 def create_and_save_appointment(ar, client_data: dict, appointment_data: dict, request):
     """Create and save a new appointment based on the provided appointment request and client data.
 
@@ -136,6 +173,15 @@ def create_and_save_appointment(ar, client_data: dict, appointment_data: dict, r
         )
 
     user = get_user_by_email(client_data['email'])
+    email = client_data.get('email')
+    if user and customer_appointment_conflict_exists(user, ar):
+        raise ValidationError(
+            "You already have an appointment during the selected time."
+        )
+    elif not user and email and customer_appointment_conflict_exists_by_email(email, ar):
+        raise ValidationError(
+            "You already have an appointment during the selected time."
+        )
     appointment = Appointment.objects.create(
             client=user, appointment_request=ar,
             **appointment_data

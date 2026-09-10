@@ -30,9 +30,12 @@ from appointment.models import (
     StaffMember
 )
 from appointment.settings import check_q_cluster
+from django.core.exceptions import ValidationError
+
 from appointment.utils.db_helpers import (
     can_appointment_be_rescheduled, check_day_off_for_staff, create_and_save_appointment, create_new_user,
-    create_payment_info_and_get_url, get_non_working_days_for_staff, get_user_by_email, get_user_model,
+    create_payment_info_and_get_url, customer_appointment_conflict_exists, get_non_working_days_for_staff,
+    get_user_by_email, get_user_model,
     get_website_name, get_weekday_num_from_date, is_working_day, staff_change_allowed_on_reschedule,
     username_in_user_model
 )
@@ -623,6 +626,18 @@ def confirm_reschedule(request, id_request):
         'end_time': ar.end_time,
         'staff_member': ar.staff_member,
     }
+
+    appointment = Appointment.objects.get(appointment_request=ar)
+    tmp_ar = type('TmpAR', (), {
+        'date': reschedule_history.date,
+        'start_time': reschedule_history.start_time,
+        'end_time': reschedule_history.end_time,
+    })()
+    if customer_appointment_conflict_exists(appointment.client, tmp_ar, exclude_appointment_id=appointment.id):
+        messages.error(request, _("You already have an appointment during the selected time."))
+        context = get_generic_context_with_extra(request, {"error_message": _("You already have an overlapping appointment.")}, admin=False)
+        template = get_custom_template('404_not_found.html', 'error_pages/404_not_found.html')
+        return render(request, template, status=400, context=context)
 
     # Update AppointmentRequest with new details
     ar.date = reschedule_history.date

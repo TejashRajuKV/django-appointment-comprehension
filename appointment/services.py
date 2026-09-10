@@ -20,9 +20,12 @@ from appointment.messages_ import appt_updated_successfully
 from appointment.settings import APPOINTMENT_PAYMENT_URL
 from appointment.utils.date_time import (
     convert_12_hour_time_to_24_hour_time, convert_str_to_date, convert_str_to_time, get_ar_end_time)
+from django.core.exceptions import ValidationError
+
 from appointment.utils.db_helpers import (
     Appointment, AppointmentRequest, EmailVerificationCode, Service, StaffMember, WorkingHours, calculate_slots,
     calculate_staff_slots, check_day_off_for_staff, create_and_save_appointment, create_new_user,
+    customer_appointment_conflict_exists,
     day_off_exists_for_date_range, exclude_booked_slots, exclude_pending_reschedules, get_all_appointments,
     get_all_staff_members,
     get_appointment_by_id, get_appointments_for_date_and_time, get_config, get_staff_member_appointment_list,
@@ -333,9 +336,17 @@ def save_appointment(appt, client_name, client_email, start_time, phone_number, 
     # Modify and save appointment request details
     appt_request = appt.appointment_request
 
+    tmp_ar = type('TmpAR', (), {
+        'date': appt_request.date,
+        'start_time': start_time,
+        'end_time': end_time,
+    })()
+    if customer_appointment_conflict_exists(client, tmp_ar, exclude_appointment_id=appt.id):
+        raise ValidationError("You already have an appointment during the selected time.")
+
     # Update reminder here
     update_appointment_reminder(appointment=appt, new_date=appt_request.date, new_start_time=start_time,
-                                want_reminder=want_reminder, request=request)
+                                 want_reminder=want_reminder, request=request)
 
     appt_request.service = service
     appt_request.start_time = start_time
@@ -380,9 +391,17 @@ def save_appt_date_time(appt_start_time, appt_date, appt_id, request):
     else:
         appt_date_obj = appt_date
 
+    tmp_ar = type('TmpAR', (), {
+        'date': appt_date_obj,
+        'start_time': appt_start_time_obj,
+        'end_time': end_time_obj,
+    })()
+    if customer_appointment_conflict_exists(appt.client, tmp_ar, exclude_appointment_id=appt.id):
+        raise ValidationError("You already have an appointment during the selected time.")
+
     # Update reminder here
     update_appointment_reminder(appointment=appt, new_date=appt_date_obj, new_start_time=appt_start_time_obj,
-                                request=request)
+                                 request=request)
 
     # Modify and save appointment request details
     appt_request = appt.appointment_request
